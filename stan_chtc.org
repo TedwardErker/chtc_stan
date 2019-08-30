@@ -1,0 +1,910 @@
+#+title: High-throughput Stan
+#+PROPERTY:  header-args:R :eval yes :cache no :results output :exports both :comments link :session *R:stats*
+#+PROPERTY:  header-args:sh :eval yes
+#+OPTIONS: num:nil
+#+filetags: stats
+#+STARTUP: entitiespretty
+#+HTML_HEAD: <style type="text/css">body {font-size: 11pt; font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;margin: 30px 50px 30px 50px; }h1,h2,h3,h4,h5,h6 { font-family: Arial,Helvetica,Sans-serif; }a { text-decoration: none; }a:link { color:darkblue; } a:visited { color:darkblue; } a:hover { color:dodgerblue; }a:active { color:dodgerblue; } code {color: #602000;font-family: "Lucida Console", Monaco, monospace; font-size: 90%;}.r { color: darkred; }.ro { color: darkgreen; background-color: #eeeeee; }.r code, a code, .ro code { color: inherit; }.vigindex ul { list-style-type: none; }.vigindex ul li { list-style: none; }.vigindex a code { color: inherit; }.vigindex li code { color: inherit; }</style>
+* Motivation
+
+In Bayesian statistics, markov chain monte carlo sampling techniques
+can take a long time to provide enough samples of a posterior
+distribution.  They can be sped up by increasing the speed of the
+sampling (for example with more efficient algorithms or faster
+computers like GPUs), or by parallelizing the sampling.  Several MCMC
+chains are needed to assess convergence and these can be run in
+parallel on the cores of a single computer.
+
+High throughput computing solves highly parallelizable problems very
+well.  Unfortuately, there is little benefit to running more than
+several chains in parallel and so the thousands of execute nodes
+available through HTC are not helpful for this problem.  However, we
+don't usually have just one model. Often we may be interested in
+comparing many models or testing a model's sensitivity to prior
+selection.  HTC can allow us to fit dozens of /models/ in parallel,
+each with several of chains.  This amounts to hundreds of independent
+jobs that each can take tens of minutes or hours but are not too
+memory intensive.  Now we have an endeavour that's a good fit for an HTC
+cluster.
+
+I work both as a statistical consultant and as a researcher at
+UW-Madison.  The objective of this paper is to demontrate for other
+researchers how to get Stan, a popular C++ package for fitting
+bayesian models, running a high though-put system and then consider a
+short example from my own work with urban tree growth.  I will
+demonstrate on UW's CHTC, but it could easily be adapted for the OSG.
+
+This paper is the final assignment for the [[https://opensciencegrid.org/user-school-2019/][open science grid user school 2019]].
+
+* Summary of workflow
+
+I work primarily in R and use the R package [[https://github.com/paul-buerkner/brms][=brms=]] to access [[https://mc-stan.org/][Stan]] for
+bayesian modelling.  But for compiling and executing Stan models
+on a cluster, CmdStan (the commandline version of Stan) is more
+lightweight and therefore more suitable (Aside - I had a hard time
+finding the CmdStan manual, partly because I don't read so good, and
+partly because it wasn't super clear. The pdf of the CmdStan manual is
+kinda hiding on the [[https://github.com/stan-dev/cmdstan/releases][release page on github]], and the source files for
+this are in the repo's src/docs/cmdstan-guide directory). 
+
+The basic sketch of my workflow is to use =brms= to generate stan code
+and data files that can be used by CmdStan contained in a docker image
+loaded by each execute node.  Here I assume you know about HTCondor
+and the basics of a submit file.  The details will focus more on
+setting up CmdStan and planning the jobs.  Here are a couple links
+about docker containers put out by the [[https://support.opensciencegrid.org/support/solutions/articles/12000058245-creating-a-docker-container-image][osg]] and UW's [[http://chtc.cs.wisc.edu/docker-jobs.shtml][chtc]].  The [[https://hub.docker.com/r/tedwarderker/cmdstan-docker][docker
+image I use]] is a clone of [[https://hub.docker.com/r/tkpapp/cmdstan-docker/dockerfile][tkpapp/cmdstan-docker]].
+
+* Setup
+:PROPERTIES:
+:header-args:R: :eval no
+:header-args:sh: :eval no
+:END:
+I will first run an example from the =brms= package on the chtc to
+test the setup:
+** Load the R libraries
+#+begin_src R
+library(rstan)
+library(brms)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Loading required package: StanHeaders
+Loading required package: ggplot2
+rstan (Version 2.19.2, GitRev: 2e1f913d3ca3)
+For execution on a local, multicore CPU with excess RAM we recommend calling
+options(mc.cores = parallel::detectCores()).
+To avoid recompilation of unchanged Stan programs, we recommend calling
+rstan_options(auto_write = TRUE)
+
+Loading required package: Rcpp
+Loading 'brms' package (version 2.9.0). Useful instructions
+can be found by typing help('brms'). A more detailed introduction
+to the package is available through vignette('brms_overview').
+
+Attaching package: ‘brms’
+
+The following object is masked from ‘package:rstan’:
+
+    loo
+#+end_example
+
+: rstan_options(auto_write = TRUE)
+
+** Use brms to output example stancode and example stan data
+
+*** Generate stan code
+#+begin_src R :file stancode.stan
+
+# example from the brms package
+  sc <- make_stancode(formula = time | cens(censored) ~ age * sex + disease
+              + (1 + age|patient),
+              data = kidney, family = lognormal(),
+              prior = c(set_prior("normal(0,5)", class = "b"),
+                        set_prior("cauchy(0,2)", class = "sd"),
+                        set_prior("lkj(2)", class = "cor")),
+              warmup = 1000, iter = 2000, chains = 4,
+              control = list(adapt_delta = 0.95))
+
+sc
+#+end_src
+
+#+RESULTS:
+[[file:stancode.stan]]
+
+This is stancode.stan:
+#+begin_src stan
+// generated with brms 2.9.0
+functions {
+}
+data {
+  int<lower=1> N;  // number of observations
+  vector[N] Y;  // response variable
+  int<lower=-1,upper=2> cens[N];  // indicates censoring
+  int<lower=1> K;  // number of population-level effects
+  matrix[N, K] X;  // population-level design matrix
+  // data for group-level effects of ID 1
+  int<lower=1> N_1;
+  int<lower=1> M_1;
+  int<lower=1> J_1[N];
+  vector[N] Z_1_1;
+  vector[N] Z_1_2;
+  int<lower=1> NC_1;
+  int prior_only;  // should the likelihood be ignored?
+}
+transformed data {
+  int Kc = K - 1;
+  matrix[N, Kc] Xc;  // centered version of X
+  vector[Kc] means_X;  // column means of X before centering
+  for (i in 2:K) {
+    means_X[i - 1] = mean(X[, i]);
+    Xc[, i - 1] = X[, i] - means_X[i - 1];
+  }
+}
+parameters {
+  vector[Kc] b;  // population-level effects
+  real temp_Intercept;  // temporary intercept
+  real<lower=0> sigma;  // residual SD
+  vector<lower=0>[M_1] sd_1;  // group-level standard deviations
+  matrix[M_1, N_1] z_1;  // unscaled group-level effects
+  // cholesky factor of correlation matrix
+  cholesky_factor_corr[M_1] L_1;
+}
+transformed parameters {
+  // group-level effects
+  matrix[N_1, M_1] r_1 = (diag_pre_multiply(sd_1, L_1) * z_1)';
+  vector[N_1] r_1_1 = r_1[, 1];
+  vector[N_1] r_1_2 = r_1[, 2];
+}
+model {
+  vector[N] mu = temp_Intercept + Xc * b;
+  for (n in 1:N) {
+    mu[n] += r_1_1[J_1[n]] * Z_1_1[n] + r_1_2[J_1[n]] * Z_1_2[n];
+  }
+  // priors including all constants
+  target += normal_lpdf(b | 0,5);
+  target += student_t_lpdf(temp_Intercept | 3, 4, 10);
+  target += student_t_lpdf(sigma | 3, 0, 10)
+    - 1 * student_t_lccdf(0 | 3, 0, 10);
+  target += cauchy_lpdf(sd_1 | 0,2)
+    - 2 * cauchy_lccdf(0 | 0,2);
+  target += normal_lpdf(to_vector(z_1) | 0, 1);
+  target += lkj_corr_cholesky_lpdf(L_1 | 2);
+  // likelihood including all constants
+  if (!prior_only) {
+    for (n in 1:N) {
+      // special treatment of censored data
+      if (cens[n] == 0) {
+        target += lognormal_lpdf(Y[n] | mu[n], sigma);
+      } else if (cens[n] == 1) {
+        target += lognormal_lccdf(Y[n] | mu[n], sigma);
+      } else if (cens[n] == -1) {
+        target += lognormal_lcdf(Y[n] | mu[n], sigma);
+      }
+    }
+  }
+}
+generated quantities {
+  // actual population-level intercept
+  real b_Intercept = temp_Intercept - dot_product(means_X, b);
+  corr_matrix[M_1] Cor_1 = multiply_lower_tri_self_transpose(L_1);
+  vector<lower=-1,upper=1>[NC_1] cor_1;
+  // extract upper diagonal of correlation matrix
+  for (k in 1:M_1) {
+    for (j in 1:(k - 1)) {
+      cor_1[choose(k - 1, 2) + j] = Cor_1[j, k];
+    }
+  }
+}
+#+end_src
+
+*** generate stan data
+Note the kinda funny =stan_rdump= function.  
+#+begin_src R 
+  dat <- make_standata(formula = time | cens(censored) ~ age * sex + disease
+              + (1 + age|patient),
+              data = kidney, family = lognormal(),
+              prior = c(set_prior("normal(0,5)", class = "b"),
+                        set_prior("cauchy(0,2)", class = "sd"),
+                        set_prior("lkj(2)", class = "cor")),
+              warmup = 1000, iter = 2000, chains = 4,
+              control = list(adapt_delta = 0.95))
+
+stan_rdump(ls(dat), file = "standata.dat", envir = list2env(dat))
+#+end_src
+
+#+RESULTS:
+
+This is the contents of standata.dat: A text file with the data in a
+format that can be read into R as well.
+#+begin_src R
+cens <- 
+structure(c(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+.Dim = c(76))
+J_1 <- 
+structure(c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 20, 21,
+22, 23, 24, 25, 27, 28, 29, 30, 31, 33, 34, 35, 38, 1, 3, 4, 5, 6, 7, 8, 9, 10,
+11, 13, 17, 18, 21, 23, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35, 37, 14, 19, 26,
+32, 36, 37, 2, 12, 14, 15, 16, 19, 20, 22, 24, 34, 36, 38),
+.Dim = c(76))
+K <- 7
+M_1 <- 2
+N <- 76
+N_1 <- 38
+NC_1 <- 1
+prior_only <- 0
+X <- 
+structure(c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+28, 48, 32, 31, 10, 16, 51, 55, 69, 51, 44, 34, 35, 17, 60, 60, 43, 44, 46, 30,
+62, 42, 43, 10, 52, 53, 54, 56, 57, 44, 22, 60, 28, 32, 32, 10, 17, 51, 56, 69,
+52, 44, 35, 60, 44, 47, 63, 43, 58, 10, 52, 53, 54, 56, 51, 57, 22, 52, 42, 53,
+57, 50, 42, 52, 48, 34, 42, 17, 60, 53, 44, 30, 43, 45, 42, 60, 0, 1, 0, 1, 0,
+1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0,
+0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1,
+1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1,
+0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1,
+0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1,
+1, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1,
+0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+0, 1, 0, 48, 0, 31, 0, 16, 0, 55, 69, 0, 44, 34, 35, 17, 0, 60, 43, 44, 0, 30,
+62, 42, 0, 10, 52, 0, 54, 56, 57, 44, 22, 0, 0, 0, 32, 0, 17, 0, 56, 69, 0, 44,
+35, 60, 44, 0, 63, 0, 58, 10, 52, 0, 54, 56, 51, 57, 22, 52, 42, 53, 57, 50, 42,
+52, 48, 34, 42, 17, 0, 53, 44, 30, 43, 45, 42, 0),
+.Dim = c(76, 7))
+Y <- 
+structure(c(8, 23, 22, 447, 30, 24, 7, 511, 53, 15, 7, 141, 96, 536, 17, 185,
+292, 15, 152, 402, 13, 39, 12, 132, 34, 2, 130, 27, 152, 190, 119, 63, 16, 28,
+318, 12, 245, 9, 30, 196, 154, 333, 38, 177, 114, 562, 66, 40, 201, 156, 30, 25,
+26, 58, 43, 30, 8, 78, 149, 22, 113, 5, 54, 6, 13, 8, 70, 25, 4, 159, 108, 24,
+46, 5, 16, 8),
+.Dim = c(76))
+Z_1_1 <- 
+structure(c(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+.Dim = c(76))
+Z_1_2 <- 
+structure(c(28, 48, 32, 31, 10, 16, 51, 55, 69, 51, 44, 34, 35, 17, 60, 60, 43,
+44, 46, 30, 62, 42, 43, 10, 52, 53, 54, 56, 57, 44, 22, 60, 28, 32, 32, 10, 17,
+51, 56, 69, 52, 44, 35, 60, 44, 47, 63, 43, 58, 10, 52, 53, 54, 56, 51, 57, 22,
+52, 42, 53, 57, 50, 42, 52, 48, 34, 42, 17, 60, 53, 44, 30, 43, 45, 42, 60),
+.Dim = c(76))
+#+end_src
+
+#+RESULTS:
+
+** send stancode and standata to submit server
+You will need to change your username and the submit server name.
+*Note*, I previously created a directory called "stan" in my home
+directory on the submit server.
+#+begin_src sh :session *a* :results verbatim
+rsync -avz stancode.stan erker@townsend-submit.chtc.wisc.edu:~/stan/
+rsync -avz standata.dat erker@townsend-submit.chtc.wisc.edu:~/stan/
+#+end_src
+
+#+RESULTS:
+#+begin_example
+erker@townsend-submit.chtc.wisc.edu's password: 
+building file list ... done
+
+sent 84 bytes  received 20 bytes  41.60 bytes/sec
+total size is 2600  speedup is 25.00
+erker@townsend-submit.chtc.wisc.edu's password: 
+building file list ... done
+standata.dat
+
+sent 822 bytes  received 42 bytes  345.60 bytes/sec
+total size is 3367  speedup is 3.90
+#+end_example
+
+** shell wrapper script.
+
+The hardest part of this for me was figuring out the paths correctly
+for my wrapper script.  With the docker image that I use, CmdStan is
+in the root, "/", directory on the execute node, but the stan code and
+data get copied to a temporary directory.  The key was figuring out
+the =cp= command with the correct slashes and dots.
+
+This script takes a single argument which gets inserted into the
+output file.  This way the samples from each chain or each model can
+be identified (and they don't overwrite one another since the default
+output would all be the same).
+
+#+BEGIN_SRC sh :tangle stan.sh
+#!/bin/bash
+
+# zero is not valid value for "id", so add one
+n=$(( $1 + 1 ))
+
+# copy the contents of cmdstan into the temp directory created on execute node 
+# (because I can't modify files outside this dir)
+# the "/." at end of cmdstan directory copies the contents of the directory.
+cp -r /cmdstan-2.18.1/. .
+
+# compile the stan model
+make stancode
+
+# sample from posterior
+./stancode sample random seed=12345 id=$n data file=standata.dat output file=samples-$1.csv
+
+#bin/stansummary samples-$1.csv  # if you want to look at summary printed
+
+#+END_SRC
+
+#+RESULTS:
+
+Make the script executable
+#+BEGIN_SRC sh :session *a*
+chmod +x stan.sh
+#+END_SRC
+
+#+RESULTS:
+: You have new mail in /var/mail/erker
+
+send the wrapper script to the submit node (again, you'll have to
+change username and submit server).
+#+BEGIN_SRC sh :session *a* :results verbatim
+rsync -avz stan.sh erker@townsend-submit.chtc.wisc.edu:~/stan/
+#+END_SRC
+
+#+RESULTS:
+: erker@townsend-submit.chtc.wisc.edu's password: 
+: building file list ... done
+: stan.sh
+: 
+: sent 437 bytes  received 48 bytes  194.00 bytes/sec
+: total size is 542  speedup is 1.12
+
+** Submit file
+This is the contents of the submit file, stan.sub.  Note that in this
+case, the queue statement specifies the number of chains to run and
+the =$(Process)= variable is the argument to the bash executable so
+output for each chain is saved as "sample-$(Process).csv"
+(sample-0.csv, sample-1.csv, ...).
+#+BEGIN_SRC sh :tangle stan.sub
+
+universe = docker
+docker_image = tedwarderker/cmdstan-docker:1.0
+
+executable = stan.sh 
+arguments = $(Process)
+transfer_input_files = stancode.stan, standata.dat, stan.sh
+transfer_output_files = samples-$(Process).csv
+
+output = stan.out
+error = stan.err
+log = stan.log
+
+request_cpus = 1
+request_memory = 4GB
+request_disk = 100MB
+
+queue 4
+
+#+END_SRC
+
+#+RESULTS:
+
+I created the submit file locally, so I'll send it to the submit server.
+#+BEGIN_SRC sh :session *a* :results verbatim
+  rsync -avz stan.sub erker@townsend-submit.chtc.wisc.edu:~/stan/
+#+END_SRC
+
+#+RESULTS:
+: erker@townsend-submit.chtc.wisc.edu's password: 
+: building file list ... done
+: stan_test.sub
+: 
+: sent 328 bytes  received 48 bytes  150.40 bytes/sec
+: total size is 338  speedup is 0.90
+
+** Submit the job
+#+BEGIN_SRC sh :session *submit* :results verbatim
+
+  # log into submit server
+  ssh erker@townsend-submit.chtc.wisc.edu
+
+  # go into "stan" directory
+  cd stan
+
+  #submit
+  condor_submit stan.sub
+
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+You have new mail in /var/mail/erker
+erker@townsend-submit.chtc.wisc.edu's password: 
+Last failed login: Sun Aug 25 14:19:19 CDT 2019 from 10.130.188.148 on ssh:notty
+There were 2 failed login attempts since the last successful login.
+Last login: Fri Aug 23 17:00:09 2019 from townsend-submit.chtc.wisc.edu
+_____________________________________________________________________
+####  #     # #######  #####  Issues?  Email chtc@cs.wisc.edu
+# #     #    #    #     # Unauthorized use prohibited by:
+#     #    #    #       WI Statutes: s. 947.0125
+#######    #    #       U.S. Code: 18 USC 1030
+#     #    #    #       U.S. Code: 18 USC 2510-2522
+# #     #    #    #     # U.S. Code: 18 USC 2701-2712
+####  #     #    #     #####  U.S. Code: 18 USC § 1831
+For off campus ssh access use https://www.doit.wisc.edu/network/vpn/
+_____________________________________________________________________
+-bash-4.2$ -bash-4.2$ -bash-4.2$ -bash-4.2$ -bash-4.2$ Submitting job(s)....
+4 job(s) submitted to cluster 22355.
+#+end_example
+
+** After run, look at output, error and log files
+stan.err showed a few small warnings that occurrerd during
+sampling.  Nothing to worry about.  
+
+stan.out shows the output of cmdstan compiling the model and sampling.
+
+stan.log shows that the job used more disk, but less memory than I
+had requested:
+#+BEGIN_QUOTE
+
+	Partitionable Resources :    Usage  Request Allocated 
+	   Cpus                 :        0        1         1 
+	   Disk (KB)            :  1167443   102400    334717 
+	   Ioheavy              :                           0 
+	   Memory (MB)          :       17     4096      4096 
+
+#+END_QUOTE
+
+only 1327 MB of memory were used where I had requested 4000 MB - an
+over estimate. But I needed ~1.2 GB of disk and only requested 100 MB
+an underestimate.  For this small job, it took less than 5 minutes.
+
+** copy stan output back locally and read into R
+#+BEGIN_SRC sh :session *a* :results verbatim
+
+rsync -avz erker@townsend-submit.chtc.wisc.edu:~/stan/samples*.csv .
+
+#+END_SRC
+
+#+RESULTS:
+: erker@townsend-submit.chtc.wisc.edu's password: 
+: receiving file list ... done
+: samples-0.csv
+: samples-1.csv
+: samples-2.csv
+: samples-3.csv
+: 
+: sent 28712 bytes  received 2893748 bytes  649435.56 bytes/sec
+: total size is 10013764  speedup is 3.43
+
+#+BEGIN_SRC R
+library(rstan)
+samples <- list.files(".", pattern = "samples*")
+o <- read_stan_csv(samples)
+#+END_SRC
+
+#+RESULTS:
+
+#+begin_src R :eval no
+o
+summary(o)$summary[1:10,1:10]
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Inference for Stan model: samples-0.
+4 chains, each with iter=2000; warmup=1000; thin=1; 
+post-warmup draws per chain=1000, total post-warmup draws=4000.
+
+                       mean      se_mean          sd          2.5%          25%
+b[1]            0.014194688 0.0005661135 0.024790630 -0.0344421125 -0.002480430
+b[2]            2.422870105 0.0252287566 1.151055544  0.1914248250  1.638045000
+b[3]           -0.394428992 0.0097430615 0.523699835 -1.4305587500 -0.737801500
+b[4]           -0.511399846 0.0090475028 0.512176144 -1.5251375000 -0.851264500
+b[5]            0.617380294 0.0134344151 0.733863417 -0.7827072000  0.128978000
+b[6]           -0.021530512 0.0005801794 0.026314898 -0.0734698625 -0.039393375
+temp_Intercept  4.260468235 0.0028010795 0.176362301  3.9162730000  4.145770000
+sigma           1.145705235 0.0023240838 0.128933331  0.9087394000  1.052320000
+sd_1[1]         0.403863687 0.0072012656 0.283420675  0.0174440725  0.176523000
+sd_1[2]         0.008364407 0.0001738388 0.006068026  0.0004087107  0.003542147
+.....
+.....
+.....
+                        50%         75%      97.5%    n_eff      Rhat
+b[1]            0.014309350  0.03067600 0.06329140 1917.644 1.0028182
+b[2]            2.433125000  3.19454750 4.69593250 2081.617 1.0028769
+b[3]           -0.396035000 -0.04641590 0.62570045 2889.176 1.0001599
+b[4]           -0.515040000 -0.17024825 0.50931083 3204.655 1.0001544
+b[5]            0.619476500  1.12000500 2.03235200 2983.960 0.9996913
+b[6]           -0.021465000 -0.00365180 0.02952938 2057.211 1.0030758
+temp_Intercept  4.255230000  4.37055750 4.61938350 3964.247 1.0003107
+sigma           1.135975000  1.22838000 1.42374375 3077.704 0.9999579
+sd_1[1]         0.360827500  0.58422875 1.06309875 1548.979 1.0003732
+sd_1[2]         0.007282805  0.01200718 0.02253319 1218.432 1.0032349
+.....
+.....
+.....
+Samples were drawn using NUTS(diag_e) at Wed Aug 28 11:25:49 2019.
+For each parameter, n_eff is a crude measure of effective sample size,
+and Rhat is the potential scale reduction factor on split chains (at 
+convergence, Rhat=1).
+
+#+end_example
+
+** Summary
+
+I now have a working example of Stan running several chains on a
+HTCondor system and the results getting read back into R for further
+analysis.  The next step is to plan how I would use this for a
+relevant work case.
+
+
+* Computational Plan for Urban Tree Growth Modelling Application
+:PROPERTIES:
+:header-args:R: :eval no
+:header-args:sh: :eval no
+:END:
+
+** COMMENT directions: Estimate the resources (CPUs, time, memory, disk, etc.) that you need
+to work on your challenge. Describe in some detail a plan or proposal
+to use computing tools to work on your challenge (more than one plan
+is OK, especially if you need resources beyond the OSG) Make sure to
+highlight specific practices and HTCondor features that you need and
+that you learned in the School In touching on each of the points
+above, it may be helpful to include information that addresses
+questions like these:
+
+
+What local resources do you have access to? Which parts of the work
+will be prepared or run on your laptop or on non-OSG resources, and
+which parts can run on OSG? How would you turn your project into
+actual jobs? What are the resource needs of the jobs themselves? What
+sort of workflow, if any, would you use? Are there manual steps in
+your overall workflow? Could they be automated (e.g., with DAGMan)?
+How much data do you need to move around? Which type of data situation
+do you have? What is your plan for data management? Do you think your
+project is better suited for HTC or HPC? Why? What security or privacy
+concerns do you have with your project? Do you need to do anything
+special regarding security? How would your science be transformed by
+increasing the amount of computation you can use? Deadline The paper
+is due 31 August 2019. We will consider individual requests for a time
+extension, but you need a good reason. Talk to us about the deadline,
+if it seems like a problem.
+
+
+I may want to include "$(Cluster)" to prevent overwriting of files if
+I resubmit the jobs.
+
+list of model stan files.  for model in modelist queue x number of chains.
+
+
+- generate several stan code files with names corresponding to their changes
+  - e.g. deterministic functional form, which predictors are included
+    in the model, priors/hyperpriors.
+  - 
+
+
+** Use brms to create many stan files with slightly different parameters
+*** read in data
+#+begin_src R
+  library(dplyr)
+  d <- readRDS("../allo/data/age_dbh_testing_noWARO.rds") %>%
+    mutate_if(is.character, as.factor)
+  str(d)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+Classes ‘tbl_df’, ‘tbl’ and 'data.frame':	5381 obs. of  11 variables:
+ $ Region        : Factor w/ 15 levels "CenFla","GulfCo",..: 4 4 4 4 4 4 4 4 4 4 ...
+ $ City          : Factor w/ 15 levels "Albuquerque, NM",..: 11 11 11 11 11 11 11 11 11 11 ...
+ $ Species       : Factor w/ 24 levels "ACPL","ACRU",..: 3 6 10 11 12 13 15 16 17 18 ...
+ $ DBH           : num  2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 2.5 ...
+ $ AGE           : int  0 0 0 0 0 0 0 0 0 0 ...
+ $ ScientificName: Factor w/ 24 levels "Acer platanoides",..: 3 6 10 11 12 13 14 16 17 18 ...
+ $ Genus         : Factor w/ 17 levels "Acer","Celtis",..: 1 3 5 6 7 8 9 11 12 13 ...
+ $ gdd           : num  5.75 5.75 5.75 5.75 5.75 ...
+ $ precip        : num  1.31 1.31 1.31 1.31 1.31 ...
+ $ Longitude     : num  -121 -121 -121 -121 -121 ...
+ $ Latitude      : num  37.6 37.6 37.6 37.6 37.6 ...
+#+end_example
+
+
+*** save model code and data
+#+begin_src R
+  library(dplyr)
+  library(rstan)
+  library(brms)
+
+  data_form <- formula(DBH ~ b0 + 100 * b1 * (1 - exp(-(b2/100) * AGE^(b3))))
+  b0_form <- formula(b0 ~ 1)
+  b1_form <- formula(b1 ~ 1)
+  b2_form <- formula(b2 ~ 1)
+  b3_form <- formula(b3 ~ 1)
+
+  form <- bf(data_form, b0_form, b1_form, b2_form, b3_form, nl = T)
+
+  nlprior <- c(prior(gamma(4,  1.33), nlpar = "b0",lb = 0),
+               prior(gamma(25, 16.66), nlpar = "b1",lb = 0),
+               prior(gamma(69.44,55.556), nlpar = "b2", lb = 0),
+               prior(gamma(44.444, 44.444), nlpar = "b3",lb = 0),
+               prior(gamma(20, 1), class = "shape"))
+
+  sc <- make_stancode(formula = form,
+                      data = d, family = Gamma("identity"),
+                      prior = nlprior,
+                      control = list(adapt_delta = 0.95),
+                      save_model = "allo/allo1.stan")
+
+  dat <- make_standata(formula = form,
+                       data = d, family = Gamma("identity"),,
+                       prior = nlprior)
+
+  stan_rdump(ls(dat), file = "allo/allo1.dat", envir = list2env(dat))
+
+                                          # compile the model locally, but don't sample.  Samples will be added back to this object later.
+  m1 <- brm(formula = form,
+            data = d, family = Gamma("identity"),
+            prior = nlprior,
+            control = list(adapt_delta = 0.95),
+            chains = 0)
+
+  data_form <- formula(DBH ~ b0 + 100 * b1 * (1 - exp(-(b2/100) * AGE^(b3))))
+  b0_form <- formula(b0 ~ (1 | City))
+  b1_form <- formula(b1 ~ (1 | City))
+  b2_form <- formula(b2 ~ (1 | City))
+  b3_form <- formula(b3 ~ (1 | City))
+
+  form <- bf(data_form, b0_form, b1_form, b2_form, b3_form, nl = T)
+
+  nlprior <- c(prior(gamma(4, 1.33), nlpar = "b0",lb = 0),
+               prior(gamma(34, 19.4), nlpar = "b1",lb = 0),
+               prior(gamma(69.4, 55.5), nlpar = "b2", lb = 0),
+               prior(gamma(44.4, 44.4), nlpar = "b3",lb = 0),
+               prior(gamma(20, 1), class = "shape"),
+               prior(normal(0, .25), class = "sd", nlpar = "b0", group = "City"),
+               prior(normal(0, .06), class = "sd", nlpar = "b1", group = "City"),
+               prior(normal(0, .03), class = "sd", nlpar = "b2", group = "City"),
+               prior(normal(0, .03), class = "sd", nlpar = "b3", group = "City"))
+
+  sc <- make_stancode(formula = form,
+                      data = d, family = Gamma("identity"),
+                      prior = nlprior,
+                      control = list(adapt_delta = 0.95),
+                      save_model = "allo/allo2.stan")
+
+  dat <- make_standata(formula = form,
+                       data = d, family = Gamma("identity"),,
+                       prior = nlprior)
+
+  stan_rdump(ls(dat), file = "allo/allo2.dat", envir = list2env(dat))
+
+  m2 <- brm(formula = form,
+            data = d, family = Gamma("identity"),
+            prior = nlprior,
+            control = list(adapt_delta = 0.95),
+            chains = 0)
+
+
+#+end_src
+
+
+** shell wrapper
+
+#+BEGIN_SRC sh :tangle allo/allo.sh
+#!/bin/bash
+
+n=$(( $2 + 1 ))
+
+# copy the contents of cmdstan into the temp directory created on execute node 
+# (because I can't modify files outside this dir)
+# the "/." at end of cmdstan directory copies the contents of the directory.
+cp -r /cmdstan-2.18.1/. .
+# for when I run locally
+# cp -r ~/git/cmdstan/. .
+
+# compile the stan model, got to drop the .stan
+make allo$1
+
+# sample from posterior
+./allo$1 sample random seed=12345 id=$n data file=allo$1.dat output file=samples-$1-$2.csv
+
+
+#+END_SRC
+
+#+RESULTS:
+
+#+BEGIN_SRC sh :session *a*
+chmod +x allo/allo.sh
+#+END_SRC
+
+#+RESULTS:
+
+** submit file
+
+#+BEGIN_SRC txt :tangle allo/allo_args.txt
+
+1
+2
+
+#+END_SRC
+
+#+BEGIN_SRC sh :tangle allo/allo.sub
+universe = docker
+docker_image = tedwarderker/cmdstan-docker:1.0
+
+executable = allo.sh 
+arguments = $(model) $(Process)
+transfer_input_files = allo$(model).stan, allo$(model).dat
+transfer_output_files = samples-$(model)-$(Process).csv
+
+output = $(model)-$(Process).out
+error = $(model)-$(Process).err
+log = $(model)-$(Process).log
+
+request_cpus = 1
+request_memory = 2GB
+request_disk = 5GB
+
+queue 4 model from allo_args.txt
+
+#+END_SRC
+
+** send to submit server
+
+
+#+BEGIN_SRC sh :session *a* :results verbatim
+
+  rsync -avz allo/allo* erker@townsend-submit.chtc.wisc.edu:~/allo/
+
+#+END_SRC
+
+#+RESULTS:
+: erker@townsend-submit.chtc.wisc.edu's password: 
+: building file list ... done
+: 
+: sent 281 bytes  received 20 bytes  66.89 bytes/sec
+: total size is 5938880  speedup is 19730.50
+
+
+** Check if I need to increase the memory and disk requirements.
+
+These are two 
+
+how long they take to run?
+
+only 5MB of memory used
+
+The more complicated job took about 25 minutes to run.
+
+** pull samples back 
+
+#+BEGIN_SRC sh :session *a* :results verbatim
+
+  rsync -avz erker@townsend-submit.chtc.wisc.edu:~/allo/samples*.csv allo/
+
+#+END_SRC
+
+** while running jobs, create the brmsfit objects locally.
+this takes a while, so it should be done once the jobs have been submitted.
+** read into R
+
+#+begin_src R
+
+    m1$fit <- list.files("allo/", pattern = "samples-1-*", full.names = T) %>% 
+        read_stan_csv()
+    m1 <- brms:::rename_pars(m1)
+    summary(m1)
+
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+ Family: gamma 
+  Links: mu = identity; shape = identity 
+Formula: DBH ~ b0 + 100 * b1 * (1 - exp(-(b2/100) * AGE^(b3))) 
+         b0 ~ 1
+         b1 ~ 1
+         b2 ~ 1
+         b3 ~ 1
+   Data: d (Number of observations: 5381) 
+Samples: 4 chains, each with iter = 2000; warmup = 1000; thin = 1;
+         total post-warmup samples = 4000
+
+Population-Level Effects: 
+             Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+b0_Intercept     2.79      0.08     2.64     2.95       2323 1.00
+b1_Intercept     1.11      0.05     1.02     1.21       1735 1.00
+b2_Intercept     0.99      0.03     0.92     1.06       2157 1.00
+b3_Intercept     1.14      0.02     1.11     1.17       1746 1.00
+
+Family Specific Parameters: 
+      Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+shape     8.00      0.15     7.71     8.30       2396 1.00
+
+Samples were drawn using sample(hmc). For each parameter, Eff.Sample 
+is a crude measure of effective sample size, and Rhat is the potential 
+scale reduction factor on split chains (at convergence, Rhat = 1).
+#+end_example
+
+#+begin_src R
+    m2$fit <- list.files("allo/", pattern = "samples-2-*", full.names = T) %>% 
+        read_stan_csv()
+    m2 <- brms:::rename_pars(m2)
+    summary(m2)
+
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+ Family: gamma 
+  Links: mu = identity; shape = identity 
+Formula: DBH ~ b0 + 100 * b1 * (1 - exp(-(b2/100) * AGE^(b3))) 
+         b0 ~ (1 | City)
+         b1 ~ (1 | City)
+         b2 ~ (1 | City)
+         b3 ~ (1 | City)
+   Data: d (Number of observations: 5381) 
+Samples: 3 chains, each with iter = 2000; warmup = 1000; thin = 1;
+         total post-warmup samples = 3000
+
+Group-Level Effects: 
+~City (Number of levels: 15) 
+                 Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+sd(b0_Intercept)     0.61      0.10     0.43     0.83       1354 1.00
+sd(b1_Intercept)     0.15      0.05     0.06     0.24       1282 1.00
+sd(b2_Intercept)     0.15      0.02     0.12     0.18       2293 1.00
+sd(b3_Intercept)     0.10      0.01     0.07     0.13       1573 1.00
+
+Population-Level Effects: 
+             Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+b0_Intercept     2.69      0.19     2.32     3.06       1048 1.00
+b1_Intercept     1.30      0.08     1.16     1.48       1606 1.00
+b2_Intercept     0.88      0.05     0.78     0.98       1460 1.00
+b3_Intercept     1.13      0.03     1.07     1.20       1092 1.00
+
+Family Specific Parameters: 
+      Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+shape    10.54      0.20    10.16    10.94       4720 1.00
+
+Samples were drawn using sample(hmc). For each parameter, Eff.Sample 
+is a crude measure of effective sample size, and Rhat is the potential 
+scale reduction factor on split chains (at convergence, Rhat = 1).
+#+end_example
+
+
+#+begin_src R
+    library(loo)
+
+  m1loo <- loo(m1)
+  m2loo <- loo(m2)
+
+  comparison <- compare(x = list(m1loo, m2loo))
+
+#+end_src
+
+#+begin_src R
+comparison
+#+end_src
+
+#+RESULTS:
+: elpd_diff        se 
+:     748.6      40.5
+
+The second model is better.
+
+** COMMENT shiny stan is useful....
+
+#+begin_src R
+library(shinystan)
+my_sso <- launch_shinystan(m2o)
+#+end_src
+
