@@ -3,7 +3,7 @@
 "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
-<!-- 2019-08-30 Fri 11:19 -->
+<!-- 2019-08-30 Fri 12:54 -->
 <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>High-throughput Stan</title>
@@ -235,49 +235,48 @@ for the JavaScript code in this tag.
 <h2>Table of Contents</h2>
 <div id="text-table-of-contents">
 <ul>
-<li><a href="#orgc3f99de">Motivation</a></li>
-<li><a href="#orgbbfb4d0">Summary of workflow</a></li>
-<li><a href="#org2d243ac">Setup</a>
+<li><a href="#orge3317f2">Motivation</a></li>
+<li><a href="#orga09264a">Summary of workflow</a></li>
+<li><a href="#orge621df9">Setup</a>
 <ul>
-<li><a href="#org66eee2d">Load the R libraries</a></li>
-<li><a href="#org76bd579">Use brms to output example stancode and example stan data</a>
+<li><a href="#org2a42805">Load the R libraries</a></li>
+<li><a href="#orgef87798">Use brms to output example stancode and example stan data</a>
 <ul>
-<li><a href="#orgcb33a30">Generate stan code</a></li>
-<li><a href="#org45ffaa0">generate stan data</a></li>
+<li><a href="#org2c5f00b">Generate stan code</a></li>
+<li><a href="#org82c0f89">generate stan data</a></li>
 </ul>
 </li>
-<li><a href="#org626532f">send stancode and standata to submit server</a></li>
-<li><a href="#orgbf39523">shell wrapper script.</a></li>
-<li><a href="#org4d00f1e">Submit file</a></li>
-<li><a href="#org8520965">Submit the job</a></li>
-<li><a href="#org5d588fc">After run, look at output, error and log files</a></li>
-<li><a href="#org8a789c1">copy stan output back locally and read into R</a></li>
-<li><a href="#orgeb9277d">Summary</a></li>
+<li><a href="#orgba14f3f">send stancode and standata to submit server</a></li>
+<li><a href="#org1f7d023">shell wrapper script.</a></li>
+<li><a href="#org1ae57ed">Submit file</a></li>
+<li><a href="#orgdbef90f">Submit the job</a></li>
+<li><a href="#org9e4edad">After run, look at output, error and log files</a></li>
+<li><a href="#org8729c96">copy stan output back locally and read into R</a></li>
+<li><a href="#orgc7e0443">Summary</a></li>
 </ul>
 </li>
-<li><a href="#org9c28106">Computational Plan for Urban Tree Growth Modelling Application</a>
+<li><a href="#org9f147d8">Computational Plan for Urban Tree Growth Modelling Application</a>
 <ul>
-<li><a href="#orgbcd8297">Use brms to create many stan files with slightly different parameters</a>
+<li><a href="#org0c974d4">Use brms to create many stan files with slightly different parameters</a>
 <ul>
-<li><a href="#org4d769ae">read in data</a></li>
-<li><a href="#org1bf3219">save model code and data</a></li>
+<li><a href="#org3bf4acb">read in tree growth data</a></li>
+<li><a href="#org5262676">save model code and data</a></li>
 </ul>
 </li>
-<li><a href="#orge43fad6">shell wrapper</a></li>
-<li><a href="#org3e7b0ae">submit file</a></li>
-<li><a href="#org7c544cc">send to submit server</a></li>
-<li><a href="#org8ce4669">Check if I need to increase the memory and disk requirements.</a></li>
-<li><a href="#org8680067">pull samples back</a></li>
-<li><a href="#orga9a66f5">while running jobs, create the brmsfit objects locally.</a></li>
-<li><a href="#orgdf8ca7f">read into R</a></li>
+<li><a href="#orgd8955d2">shell wrapper</a></li>
+<li><a href="#org556176b">submit file</a></li>
+<li><a href="#org59043cf">send to submit server</a></li>
+<li><a href="#orgefe1270">pull samples back</a></li>
+<li><a href="#org0f161bf">Read samples into R</a></li>
+<li><a href="#orgbde7c2f">Compare the two models</a></li>
 </ul>
 </li>
 </ul>
 </div>
 </div>
-<div id="outline-container-orgc3f99de" class="outline-2">
-<h2 id="orgc3f99de">Motivation</h2>
-<div class="outline-text-2" id="text-orgc3f99de">
+<div id="outline-container-orge3317f2" class="outline-2">
+<h2 id="orge3317f2">Motivation</h2>
+<div class="outline-text-2" id="text-orge3317f2">
 <p>
 In Bayesian statistics, markov chain monte carlo sampling techniques
 can take a long time to provide enough samples of a posterior
@@ -317,9 +316,9 @@ This paper is the final assignment for the <a href="https://opensciencegrid.org/
 </div>
 </div>
 
-<div id="outline-container-orgbbfb4d0" class="outline-2">
-<h2 id="orgbbfb4d0">Summary of workflow</h2>
-<div class="outline-text-2" id="text-orgbbfb4d0">
+<div id="outline-container-orga09264a" class="outline-2">
+<h2 id="orga09264a">Summary of workflow</h2>
+<div class="outline-text-2" id="text-orga09264a">
 <p>
 I work primarily in R and use the R package <a href="https://github.com/paul-buerkner/brms"><code>brms</code></a> to access <a href="https://mc-stan.org/">Stan</a> for
 bayesian modelling.  But for compiling and executing Stan models
@@ -343,37 +342,32 @@ image I use</a> is a clone of <a href="https://hub.docker.com/r/tkpapp/cmdstan-d
 </div>
 </div>
 
-<div id="outline-container-org2d243ac" class="outline-2">
-<h2 id="org2d243ac">Setup</h2>
-<div class="outline-text-2" id="text-org2d243ac">
+<div id="outline-container-orge621df9" class="outline-2">
+<h2 id="orge621df9">Setup</h2>
+<div class="outline-text-2" id="text-orge621df9">
 <p>
 I will first run an example from the <code>brms</code> package on the chtc to
 test the setup:
 </p>
 </div>
-<div id="outline-container-org66eee2d" class="outline-3">
-<h3 id="org66eee2d">Load the R libraries</h3>
-<div class="outline-text-3" id="text-org66eee2d">
+<div id="outline-container-org2a42805" class="outline-3">
+<h3 id="org2a42805">Load the R libraries</h3>
+<div class="outline-text-3" id="text-org2a42805">
 <div class="org-src-container">
 <pre class="src src-R"><span style="color: #268bd2; font-weight: bold;">library</span>(rstan)
 <span style="color: #268bd2; font-weight: bold;">library</span>(brms)
 </pre>
 </div>
-
-<pre class="example">
-rstan_options(auto_write = TRUE)
-
-</pre>
 </div>
 </div>
 
-<div id="outline-container-org76bd579" class="outline-3">
-<h3 id="org76bd579">Use brms to output example stancode and example stan data</h3>
-<div class="outline-text-3" id="text-org76bd579">
+<div id="outline-container-orgef87798" class="outline-3">
+<h3 id="orgef87798">Use brms to output example stancode and example stan data</h3>
+<div class="outline-text-3" id="text-orgef87798">
 </div>
-<div id="outline-container-orgcb33a30" class="outline-4">
-<h4 id="orgcb33a30">Generate stan code</h4>
-<div class="outline-text-4" id="text-orgcb33a30">
+<div id="outline-container-org2c5f00b" class="outline-4">
+<h4 id="org2c5f00b">Generate stan code</h4>
+<div class="outline-text-4" id="text-org2c5f00b">
 <div class="org-src-container">
 <pre class="src src-R">
 <span style="color: #93a1a1;"># </span><span style="color: #93a1a1;">example from the brms package</span>
@@ -481,9 +475,9 @@ This is stancode.stan:
 </div>
 </div>
 
-<div id="outline-container-org45ffaa0" class="outline-4">
-<h4 id="org45ffaa0">generate stan data</h4>
-<div class="outline-text-4" id="text-org45ffaa0">
+<div id="outline-container-org82c0f89" class="outline-4">
+<h4 id="org82c0f89">generate stan data</h4>
+<div class="outline-text-4" id="text-org82c0f89">
 <p>
 Note the kinda funny <code>stan_rdump</code> function.  
 </p>
@@ -571,9 +565,9 @@ structure(c(28, 48, 32, 31, 10, 16, 51, 55, 69, 51, 44, 34, 35, 17, 60, 60, 43,
 </div>
 </div>
 
-<div id="outline-container-org626532f" class="outline-3">
-<h3 id="org626532f">send stancode and standata to submit server</h3>
-<div class="outline-text-3" id="text-org626532f">
+<div id="outline-container-orgba14f3f" class="outline-3">
+<h3 id="orgba14f3f">send stancode and standata to submit server</h3>
+<div class="outline-text-3" id="text-orgba14f3f">
 <p>
 You will need to change your username and the submit server name.
 <b>Note</b>, I previously created a directory called "stan" in my home
@@ -587,9 +581,9 @@ rsync -avz standata.dat erker@townsend-submit.chtc.wisc.edu:~/stan/
 </div>
 </div>
 
-<div id="outline-container-orgbf39523" class="outline-3">
-<h3 id="orgbf39523">shell wrapper script.</h3>
-<div class="outline-text-3" id="text-orgbf39523">
+<div id="outline-container-org1f7d023" class="outline-3">
+<h3 id="org1f7d023">shell wrapper script.</h3>
+<div class="outline-text-3" id="text-org1f7d023">
 <p>
 The hardest part of this for me was figuring out the paths correctly
 for my wrapper script.  With the docker image that I use, CmdStan is
@@ -646,9 +640,9 @@ change username and submit server).
 </div>
 </div>
 
-<div id="outline-container-org4d00f1e" class="outline-3">
-<h3 id="org4d00f1e">Submit file</h3>
-<div class="outline-text-3" id="text-org4d00f1e">
+<div id="outline-container-org1ae57ed" class="outline-3">
+<h3 id="org1ae57ed">Submit file</h3>
+<div class="outline-text-3" id="text-org1ae57ed">
 <p>
 This is the contents of the submit file, stan.sub.  Note that in this
 case, the queue statement specifies the number of chains to run and
@@ -689,9 +683,9 @@ I created the submit file locally, so I'll send it to the submit server.
 </div>
 </div>
 
-<div id="outline-container-org8520965" class="outline-3">
-<h3 id="org8520965">Submit the job</h3>
-<div class="outline-text-3" id="text-org8520965">
+<div id="outline-container-orgdbef90f" class="outline-3">
+<h3 id="orgdbef90f">Submit the job</h3>
+<div class="outline-text-3" id="text-orgdbef90f">
 <div class="org-src-container">
 <pre class="src src-sh">
 <span style="color: #93a1a1;"># </span><span style="color: #93a1a1;">log into submit server</span>
@@ -708,47 +702,35 @@ condor_submit stan.sub
 </div>
 </div>
 
-<div id="outline-container-org5d588fc" class="outline-3">
-<h3 id="org5d588fc">After run, look at output, error and log files</h3>
-<div class="outline-text-3" id="text-org5d588fc">
+<div id="outline-container-org9e4edad" class="outline-3">
+<h3 id="org9e4edad">After run, look at output, error and log files</h3>
+<div class="outline-text-3" id="text-org9e4edad">
 <p>
-stan.err showed a few small warnings that occurrerd during
-sampling.  Nothing to worry about.  
+<code>stan.err</code> showed a few small warnings that occurrerd during
+sampling.  Nothing to worry about.  <code>stan.out</code> shows the output of
+cmdstan compiling the model and sampling. <code>stan.log</code> shows that the
+job used more disk, but less memory than I had requested:
 </p>
-
-<p>
-stan.out shows the output of cmdstan compiling the model and sampling.
-</p>
-
-<p>
-stan.log shows that the job used more disk, but less memory than I
-had requested:
-</p>
-<blockquote>
-<p>
-
-</p>
-
-<p>
-Partitionable Resources :    Usage  Request Allocated 
+<div class="org-src-container">
+<pre class="src src-sh">Partitionable Resources :    Usage  Request Allocated 
    Cpus                 :        0        1         1 
    Disk (KB)            :  1167443   102400    334717 
    Ioheavy              :                           0 
    Memory (MB)          :       17     4096      4096 
-</p>
-</blockquote>
+</pre>
+</div>
 
 <p>
-only 1327 MB of memory were used where I had requested 4000 MB - an
+only 17 MB of memory were used where I had requested 4000 MB - an
 over estimate. But I needed ~1.2 GB of disk and only requested 100 MB
 an underestimate.  For this small job, it took less than 5 minutes.
 </p>
 </div>
 </div>
 
-<div id="outline-container-org8a789c1" class="outline-3">
-<h3 id="org8a789c1">copy stan output back locally and read into R</h3>
-<div class="outline-text-3" id="text-org8a789c1">
+<div id="outline-container-org8729c96" class="outline-3">
+<h3 id="org8729c96">copy stan output back locally and read into R</h3>
+<div class="outline-text-3" id="text-org8729c96">
 <div class="org-src-container">
 <pre class="src src-sh">
 rsync -avz erker@townsend-submit.chtc.wisc.edu:~/stan/samples*.csv .
@@ -768,35 +750,121 @@ o <span style="color: #268bd2; font-weight: bold;">&lt;-</span> read_stan_csv(sa
 summary(o)$summary[1:10,1:10]
 </pre>
 </div>
+
+<pre class="example">
+Inference for Stan model: samples-0.
+4 chains, each with iter=2000; warmup=1000; thin=1; 
+post-warmup draws per chain=1000, total post-warmup draws=4000.
+
+                       mean      se_mean          sd          2.5%          25%
+b[1]            0.014194688 0.0005661135 0.024790630 -0.0344421125 -0.002480430
+b[2]            2.422870105 0.0252287566 1.151055544  0.1914248250  1.638045000
+b[3]           -0.394428992 0.0097430615 0.523699835 -1.4305587500 -0.737801500
+b[4]           -0.511399846 0.0090475028 0.512176144 -1.5251375000 -0.851264500
+b[5]            0.617380294 0.0134344151 0.733863417 -0.7827072000  0.128978000
+b[6]           -0.021530512 0.0005801794 0.026314898 -0.0734698625 -0.039393375
+temp_Intercept  4.260468235 0.0028010795 0.176362301  3.9162730000  4.145770000
+sigma           1.145705235 0.0023240838 0.128933331  0.9087394000  1.052320000
+sd_1[1]         0.403863687 0.0072012656 0.283420675  0.0174440725  0.176523000
+sd_1[2]         0.008364407 0.0001738388 0.006068026  0.0004087107  0.003542147
+.....
+.....
+.....
+                        50%         75%      97.5%    n_eff      Rhat
+b[1]            0.014309350  0.03067600 0.06329140 1917.644 1.0028182
+b[2]            2.433125000  3.19454750 4.69593250 2081.617 1.0028769
+b[3]           -0.396035000 -0.04641590 0.62570045 2889.176 1.0001599
+b[4]           -0.515040000 -0.17024825 0.50931083 3204.655 1.0001544
+b[5]            0.619476500  1.12000500 2.03235200 2983.960 0.9996913
+b[6]           -0.021465000 -0.00365180 0.02952938 2057.211 1.0030758
+temp_Intercept  4.255230000  4.37055750 4.61938350 3964.247 1.0003107
+sigma           1.135975000  1.22838000 1.42374375 3077.704 0.9999579
+sd_1[1]         0.360827500  0.58422875 1.06309875 1548.979 1.0003732
+sd_1[2]         0.007282805  0.01200718 0.02253319 1218.432 1.0032349
+.....
+.....
+.....
+Samples were drawn using NUTS(diag_e) at Wed Aug 28 11:25:49 2019.
+For each parameter, n_eff is a crude measure of effective sample size,
+and Rhat is the potential scale reduction factor on split chains (at 
+convergence, Rhat=1).
+
+</pre>
 </div>
 </div>
 
-<div id="outline-container-orgeb9277d" class="outline-3">
-<h3 id="orgeb9277d">Summary</h3>
-<div class="outline-text-3" id="text-orgeb9277d">
+<div id="outline-container-orgc7e0443" class="outline-3">
+<h3 id="orgc7e0443">Summary</h3>
+<div class="outline-text-3" id="text-orgc7e0443">
 <p>
-I now have a working example of Stan running several chains on a
-HTCondor system and the results getting read back into R for further
-analysis.  The next step is to plan how I would use this for a
-relevant work case.
+The results from the model look good. I now have a working example of
+Stan running several chains on a HTCondor system and the results
+getting read back into R for further analysis.  The next step is to
+plan how I would use this for a relevant work case.
 </p>
 </div>
 </div>
 </div>
 
+<div id="outline-container-org9f147d8" class="outline-2">
+<h2 id="org9f147d8">Computational Plan for Urban Tree Growth Modelling Application</h2>
+<div class="outline-text-2" id="text-org9f147d8">
+<p>
+I model the growth of urban trees.  Essentially, how does the size of
+a tree (e.g. diameter of the truck) increase in time and how do the
+parameters controling this growth curve vary with species, location,
+and climate.  Selecting the best model is often an iterative approach:
+first, devise a simple model and see how well its predictions match
+observed data, then adjust the model and compare predicitve
+performance again, repeat until satisfied.  This can take quite a
+while when the number of reasonable models is quite big, and also when
+the models may be sensitive to the hyperpriors used and so require
+that hyperprior choices are evaluated.
+</p>
 
-<div id="outline-container-org9c28106" class="outline-2">
-<h2 id="org9c28106">Computational Plan for Urban Tree Growth Modelling Application</h2>
-<div class="outline-text-2" id="text-org9c28106">
+<p>
+To speed the process along a bit, I plan to locally create dozens of
+models via <code>brms</code> that are all reasonable and then send them to be
+sampled by CmdStan on the CHTC cluster.  After sampling (the time
+intensive step), I will read in the samples locally to assess and
+compare the models.  
+</p>
+
+<p>
+The data that need to be sent to the execute nodes are pretty small
+(less than 1MB), and the code files are tiny (less than 10kb).  From
+the example below running two models, the memory requirements are
+surprisingly low.  The bigger job only used 5MB, but there could be
+other jobs that use considerably more (for example the example above).
+Disk required was surprisingly large: over a GB.  I think much of
+thisc comes from the docker image. The output files, samples from the
+posterior, won't be bigger than several MB.  Of the two models I ran in
+the test workflow below, the small model took under 5 minutes to
+complete, but the larger model took 25 minutes.  I could imagine even
+more complex models taking over an hour.  Given the small data
+transfers and execution times, this task will be wel suited for the
+HTC.
+</p>
+
+<p>
+Using HTC means the number of models considered will increase (but not
+to the point of data dredging or fitting every possible model
+regardless of its plausibility).  My local machine will be freed up to
+do other work while hundreds of MCMC chains are running in parallel on
+the CHTC's machines.  The result will be greater confidence that I
+have better explored the set of plausible models and have done so much
+faster.
+</p>
 </div>
 
-<div id="outline-container-orgbcd8297" class="outline-3">
-<h3 id="orgbcd8297">Use brms to create many stan files with slightly different parameters</h3>
-<div class="outline-text-3" id="text-orgbcd8297">
+
+<div id="outline-container-org0c974d4" class="outline-3">
+<h3 id="org0c974d4">Use brms to create many stan files with slightly different parameters</h3>
+<div class="outline-text-3" id="text-org0c974d4">
 </div>
-<div id="outline-container-org4d769ae" class="outline-4">
-<h4 id="org4d769ae">read in data</h4>
-<div class="outline-text-4" id="text-org4d769ae">
+<div id="outline-container-org3bf4acb" class="outline-4">
+<h4 id="org3bf4acb">read in tree growth data</h4>
+<div class="outline-text-4" id="text-org3bf4acb">
 <div class="org-src-container">
 <pre class="src src-R"><span style="color: #268bd2; font-weight: bold;">library</span>(dplyr)
 d <span style="color: #268bd2; font-weight: bold;">&lt;-</span> readRDS(<span style="color: #2aa198;">"../allo/data/age_dbh_testing_noWARO.rds"</span>) <span style="color: #268bd2; font-weight: bold;">%&gt;%</span>
@@ -808,9 +876,18 @@ str(d)
 </div>
 
 
-<div id="outline-container-org1bf3219" class="outline-4">
-<h4 id="org1bf3219">save model code and data</h4>
-<div class="outline-text-4" id="text-org1bf3219">
+<div id="outline-container-org5262676" class="outline-4">
+<h4 id="org5262676">save model code and data</h4>
+<div class="outline-text-4" id="text-org5262676">
+<p>
+I will index the models with integers since the results can be read
+back in an joined to objects that contain all the information used to
+fit the model.  There is no need for complex naming conventions or to
+pass complex arguments to the execute nodes, as long as I keep the
+local code well organized in order to rejoin samples to their models
+based on the index.  In this example the indicies are just 1 and 2.
+</p>
+
 <div class="org-src-container">
 <pre class="src src-R"><span style="color: #268bd2; font-weight: bold;">library</span>(dplyr)
 <span style="color: #268bd2; font-weight: bold;">library</span>(rstan)
@@ -892,21 +969,19 @@ m2 <span style="color: #268bd2; font-weight: bold;">&lt;-</span> brm(formula = f
 </div>
 </div>
 
-
-<div id="outline-container-orge43fad6" class="outline-3">
-<h3 id="orge43fad6">shell wrapper</h3>
-<div class="outline-text-3" id="text-orge43fad6">
+<div id="outline-container-orgd8955d2" class="outline-3">
+<h3 id="orgd8955d2">shell wrapper</h3>
+<div class="outline-text-3" id="text-orgd8955d2">
+<p>
+I now have two arguments for this script.  $1 is the model number, $2
+is the process number which corresponds to the chain.
+</p>
 <div class="org-src-container">
 <pre class="src src-sh"><span style="color: #93a1a1;">#</span><span style="color: #93a1a1;">!/bin/</span><span style="color: #859900; font-weight: bold;">bash</span>
 
 <span style="color: #268bd2;">n</span>=$(( $<span style="color: #268bd2;">2</span> + 1 ))
 
-<span style="color: #93a1a1;"># </span><span style="color: #93a1a1;">copy the contents of cmdstan into the temp directory created on execute node </span>
-<span style="color: #93a1a1;"># </span><span style="color: #93a1a1;">(because I can't modify files outside this dir)</span>
-<span style="color: #93a1a1;"># </span><span style="color: #93a1a1;">the "/." at end of cmdstan directory copies the contents of the directory.</span>
 cp -r /cmdstan-2.18.1/. .
-<span style="color: #93a1a1;"># </span><span style="color: #93a1a1;">for when I run locally</span>
-<span style="color: #93a1a1;"># </span><span style="color: #93a1a1;">cp -r ~/git/cmdstan/. .</span>
 
 <span style="color: #93a1a1;"># </span><span style="color: #93a1a1;">compile the stan model, got to drop the .stan</span>
 make allo$<span style="color: #268bd2;">1</span>
@@ -918,6 +993,9 @@ make allo$<span style="color: #268bd2;">1</span>
 </pre>
 </div>
 
+<p>
+make executable
+</p>
 <div class="org-src-container">
 <pre class="src src-sh">chmod +x allo/allo.sh
 </pre>
@@ -925,9 +1003,12 @@ make allo$<span style="color: #268bd2;">1</span>
 </div>
 </div>
 
-<div id="outline-container-org3e7b0ae" class="outline-3">
-<h3 id="org3e7b0ae">submit file</h3>
-<div class="outline-text-3" id="text-org3e7b0ae">
+<div id="outline-container-org556176b" class="outline-3">
+<h3 id="org556176b">submit file</h3>
+<div class="outline-text-3" id="text-org556176b">
+<p>
+allo-args.txt
+</p>
 <div class="org-src-container">
 <pre class="src src-txt">
 1
@@ -936,6 +1017,9 @@ make allo$<span style="color: #268bd2;">1</span>
 </pre>
 </div>
 
+<p>
+Queue 4 chains for each model taken from the list in allo-args.txt
+</p>
 <div class="org-src-container">
 <pre class="src src-sh">universe = docker
 docker_image = tedwarderker/cmdstan-docker:1.0
@@ -953,16 +1037,16 @@ request_cpus = 1
 request_memory = 2GB
 request_disk = 5GB
 
-queue 4 model from allo_args.txt
+queue 4 model from allo-args.txt
 
 </pre>
 </div>
 </div>
 </div>
 
-<div id="outline-container-org7c544cc" class="outline-3">
-<h3 id="org7c544cc">send to submit server</h3>
-<div class="outline-text-3" id="text-org7c544cc">
+<div id="outline-container-org59043cf" class="outline-3">
+<h3 id="org59043cf">send to submit server</h3>
+<div class="outline-text-3" id="text-org59043cf">
 <div class="org-src-container">
 <pre class="src src-sh">
 rsync -avz allo/allo* erker@townsend-submit.chtc.wisc.edu:~/allo/
@@ -972,31 +1056,9 @@ rsync -avz allo/allo* erker@townsend-submit.chtc.wisc.edu:~/allo/
 </div>
 </div>
 
-
-<div id="outline-container-org8ce4669" class="outline-3">
-<h3 id="org8ce4669">Check if I need to increase the memory and disk requirements.</h3>
-<div class="outline-text-3" id="text-org8ce4669">
-<p>
-These are two 
-</p>
-
-<p>
-how long they take to run?
-</p>
-
-<p>
-only 5MB of memory used
-</p>
-
-<p>
-The more complicated job took about 25 minutes to run.
-</p>
-</div>
-</div>
-
-<div id="outline-container-org8680067" class="outline-3">
-<h3 id="org8680067">pull samples back</h3>
-<div class="outline-text-3" id="text-org8680067">
+<div id="outline-container-orgefe1270" class="outline-3">
+<h3 id="orgefe1270">pull samples back</h3>
+<div class="outline-text-3" id="text-orgefe1270">
 <div class="org-src-container">
 <pre class="src src-sh">
 rsync -avz erker@townsend-submit.chtc.wisc.edu:~/allo/samples*.csv allo/
@@ -1006,17 +1068,9 @@ rsync -avz erker@townsend-submit.chtc.wisc.edu:~/allo/samples*.csv allo/
 </div>
 </div>
 
-<div id="outline-container-orga9a66f5" class="outline-3">
-<h3 id="orga9a66f5">while running jobs, create the brmsfit objects locally.</h3>
-<div class="outline-text-3" id="text-orga9a66f5">
-<p>
-this takes a while, so it should be done once the jobs have been submitted.
-</p>
-</div>
-</div>
-<div id="outline-container-orgdf8ca7f" class="outline-3">
-<h3 id="orgdf8ca7f">read into R</h3>
-<div class="outline-text-3" id="text-orgdf8ca7f">
+<div id="outline-container-org0f161bf" class="outline-3">
+<h3 id="org0f161bf">Read samples into R</h3>
+<div class="outline-text-3" id="text-org0f161bf">
 <div class="org-src-container">
 <pre class="src src-R">
 m1$fit <span style="color: #268bd2; font-weight: bold;">&lt;-</span> list.files(<span style="color: #2aa198;">"allo/"</span>, pattern = <span style="color: #2aa198;">"samples-1-*"</span>, full.names = T) <span style="color: #268bd2; font-weight: bold;">%&gt;%</span> 
@@ -1027,6 +1081,35 @@ summary(m1)
 </pre>
 </div>
 
+<pre class="example">
+
+ Family: gamma 
+  Links: mu = identity; shape = identity 
+Formula: DBH ~ b0 + 100 * b1 * (1 - exp(-(b2/100) * AGE^(b3))) 
+         b0 ~ 1
+         b1 ~ 1
+         b2 ~ 1
+         b3 ~ 1
+   Data: d (Number of observations: 5381) 
+Samples: 4 chains, each with iter = 2000; warmup = 1000; thin = 1;
+         total post-warmup samples = 4000
+
+Population-Level Effects: 
+             Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+b0_Intercept     2.79      0.08     2.64     2.95       2323 1.00
+b1_Intercept     1.11      0.05     1.02     1.21       1735 1.00
+b2_Intercept     0.99      0.03     0.92     1.06       2157 1.00
+b3_Intercept     1.14      0.02     1.11     1.17       1746 1.00
+
+Family Specific Parameters: 
+      Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+shape     8.00      0.15     7.71     8.30       2396 1.00
+
+Samples were drawn using sample(hmc). For each parameter, Eff.Sample 
+is a crude measure of effective sample size, and Rhat is the potential 
+scale reduction factor on split chains (at convergence, Rhat = 1).
+</pre>
+
 <div class="org-src-container">
 <pre class="src src-R">m2$fit <span style="color: #268bd2; font-weight: bold;">&lt;-</span> list.files(<span style="color: #2aa198;">"allo/"</span>, pattern = <span style="color: #2aa198;">"samples-2-*"</span>, full.names = T) <span style="color: #268bd2; font-weight: bold;">%&gt;%</span> 
     read_stan_csv()
@@ -1036,7 +1119,48 @@ summary(m2)
 </pre>
 </div>
 
+<pre class="example">
 
+ Family: gamma 
+  Links: mu = identity; shape = identity 
+Formula: DBH ~ b0 + 100 * b1 * (1 - exp(-(b2/100) * AGE^(b3))) 
+         b0 ~ (1 | City)
+         b1 ~ (1 | City)
+         b2 ~ (1 | City)
+         b3 ~ (1 | City)
+   Data: d (Number of observations: 5381) 
+Samples: 3 chains, each with iter = 2000; warmup = 1000; thin = 1;
+         total post-warmup samples = 3000
+
+Group-Level Effects: 
+~City (Number of levels: 15) 
+                 Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+sd(b0_Intercept)     0.61      0.10     0.43     0.83       1354 1.00
+sd(b1_Intercept)     0.15      0.05     0.06     0.24       1282 1.00
+sd(b2_Intercept)     0.15      0.02     0.12     0.18       2293 1.00
+sd(b3_Intercept)     0.10      0.01     0.07     0.13       1573 1.00
+
+Population-Level Effects: 
+             Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+b0_Intercept     2.69      0.19     2.32     3.06       1048 1.00
+b1_Intercept     1.30      0.08     1.16     1.48       1606 1.00
+b2_Intercept     0.88      0.05     0.78     0.98       1460 1.00
+b3_Intercept     1.13      0.03     1.07     1.20       1092 1.00
+
+Family Specific Parameters: 
+      Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+shape    10.54      0.20    10.16    10.94       4720 1.00
+
+Samples were drawn using sample(hmc). For each parameter, Eff.Sample 
+is a crude measure of effective sample size, and Rhat is the potential 
+scale reduction factor on split chains (at convergence, Rhat = 1).
+</pre>
+</div>
+</div>
+
+<div id="outline-container-orgbde7c2f" class="outline-3">
+<h3 id="orgbde7c2f">Compare the two models</h3>
+<div class="outline-text-3" id="text-orgbde7c2f">
 <div class="org-src-container">
 <pre class="src src-R">  <span style="color: #268bd2; font-weight: bold;">library</span>(loo)
 
@@ -1054,7 +1178,7 @@ comparison <span style="color: #268bd2; font-weight: bold;">&lt;-</span> compare
 </div>
 
 <p>
-The second model is better.
+It looks like the second model with parameters varying by City is better.
 </p>
 </div>
 </div>
@@ -1062,7 +1186,7 @@ The second model is better.
 </div>
 <div id="postamble" class="status">
 <p class="author">Author: Tedward Erker</p>
-<p class="date">Created: 2019-08-30 Fri 11:19</p>
+<p class="date">Created: 2019-08-30 Fri 12:54</p>
 <p class="validation"><a href="http://validator.w3.org/check?uri=referer">Validate</a></p>
 </div>
 </body>

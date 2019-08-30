@@ -68,30 +68,6 @@ library(rstan)
 library(brms)
 #+end_src
 
-#+RESULTS:
-#+begin_example
-Loading required package: StanHeaders
-Loading required package: ggplot2
-rstan (Version 2.19.2, GitRev: 2e1f913d3ca3)
-For execution on a local, multicore CPU with excess RAM we recommend calling
-options(mc.cores = parallel::detectCores()).
-To avoid recompilation of unchanged Stan programs, we recommend calling
-rstan_options(auto_write = TRUE)
-
-Loading required package: Rcpp
-Loading 'brms' package (version 2.9.0). Useful instructions
-can be found by typing help('brms'). A more detailed introduction
-to the package is available through vignette('brms_overview').
-
-Attaching package: ‘brms’
-
-The following object is masked from ‘package:rstan’:
-
-    loo
-#+end_example
-
-: rstan_options(auto_write = TRUE)
-
 ** Use brms to output example stancode and example stan data
 
 *** Generate stan code
@@ -443,24 +419,19 @@ _____________________________________________________________________
 #+end_example
 
 ** After run, look at output, error and log files
-stan.err showed a few small warnings that occurrerd during
-sampling.  Nothing to worry about.  
-
-stan.out shows the output of cmdstan compiling the model and sampling.
-
-stan.log shows that the job used more disk, but less memory than I
-had requested:
-#+BEGIN_QUOTE
-
+=stan.err= showed a few small warnings that occurrerd during
+sampling.  Nothing to worry about.  =stan.out= shows the output of
+cmdstan compiling the model and sampling. =stan.log= shows that the
+job used more disk, but less memory than I had requested:
+#+BEGIN_SRC sh
 	Partitionable Resources :    Usage  Request Allocated 
 	   Cpus                 :        0        1         1 
 	   Disk (KB)            :  1167443   102400    334717 
 	   Ioheavy              :                           0 
 	   Memory (MB)          :       17     4096      4096 
+#+END_SRC
 
-#+END_QUOTE
-
-only 1327 MB of memory were used where I had requested 4000 MB - an
+only 17 MB of memory were used where I had requested 4000 MB - an
 over estimate. But I needed ~1.2 GB of disk and only requested 100 MB
 an underestimate.  For this small job, it took less than 5 minutes.
 
@@ -490,7 +461,7 @@ o <- read_stan_csv(samples)
 
 #+RESULTS:
 
-#+begin_src R :eval no
+#+begin_src R :eval no :exports both
 o
 summary(o)$summary[1:10,1:10]
 #+end_src
@@ -538,17 +509,56 @@ convergence, Rhat=1).
 
 ** Summary
 
-I now have a working example of Stan running several chains on a
-HTCondor system and the results getting read back into R for further
-analysis.  The next step is to plan how I would use this for a
-relevant work case.
-
+The results from the model look good. I now have a working example of
+Stan running several chains on a HTCondor system and the results
+getting read back into R for further analysis.  The next step is to
+plan how I would use this for a relevant work case.
 
 * Computational Plan for Urban Tree Growth Modelling Application
 :PROPERTIES:
 :header-args:R: :eval no
 :header-args:sh: :eval no
 :END:
+
+I model the growth of urban trees.  Essentially, how does the size of
+a tree (e.g. diameter of the truck) increase in time and how do the
+parameters controling this growth curve vary with species, location,
+and climate.  Selecting the best model is often an iterative approach:
+first, devise a simple model and see how well its predictions match
+observed data, then adjust the model and compare predicitve
+performance again, repeat until satisfied.  This can take quite a
+while when the number of reasonable models is quite big, and also when
+the models may be sensitive to the hyperpriors used and so require
+that hyperprior choices are evaluated.
+
+To speed the process along a bit, I plan to locally create dozens of
+models via =brms= that are all reasonable and then send them to be
+sampled by CmdStan on the CHTC cluster.  After sampling (the time
+intensive step), I will read in the samples locally to assess and
+compare the models.  
+
+The data that need to be sent to the execute nodes are pretty small
+(less than 1MB), and the code files are tiny (less than 10kb).  From
+the example below running two models, the memory requirements are
+surprisingly low.  The bigger job only used 5MB, but there could be
+other jobs that use considerably more (for example the example above).
+Disk required was surprisingly large: over a GB.  I think much of
+thisc comes from the docker image. The output files, samples from the
+posterior, won't be bigger than several MB.  Of the two models I ran in
+the test workflow below, the small model took under 5 minutes to
+complete, but the larger model took 25 minutes.  I could imagine even
+more complex models taking over an hour.  Given the small data
+transfers and execution times, this task will be wel suited for the
+HTC.
+
+Using HTC means the number of models considered will increase (but not
+to the point of data dredging or fitting every possible model
+regardless of its plausibility).  My local machine will be freed up to
+do other work while hundreds of MCMC chains are running in parallel on
+the CHTC's machines.  The result will be greater confidence that I
+have better explored the set of plausible models and have done so much
+faster.
+
 
 ** COMMENT directions: Estimate the resources (CPUs, time, memory, disk, etc.) that you need
 to work on your challenge. Describe in some detail a plan or proposal
@@ -590,7 +600,7 @@ list of model stan files.  for model in modelist queue x number of chains.
 
 
 ** Use brms to create many stan files with slightly different parameters
-*** read in data
+*** read in tree growth data
 #+begin_src R
   library(dplyr)
   d <- readRDS("../allo/data/age_dbh_testing_noWARO.rds") %>%
@@ -617,6 +627,13 @@ Classes ‘tbl_df’, ‘tbl’ and 'data.frame':	5381 obs. of  11 variables:
 
 
 *** save model code and data
+I will index the models with integers since the results can be read
+back in an joined to objects that contain all the information used to
+fit the model.  There is no need for complex naming conventions or to
+pass complex arguments to the execute nodes, as long as I keep the
+local code well organized in order to rejoin samples to their models
+based on the index.  In this example the indicies are just 1 and 2.
+
 #+begin_src R
   library(dplyr)
   library(rstan)
@@ -694,20 +711,16 @@ Classes ‘tbl_df’, ‘tbl’ and 'data.frame':	5381 obs. of  11 variables:
 
 #+end_src
 
-
 ** shell wrapper
 
+I now have two arguments for this script.  $1 is the model number, $2
+is the process number which corresponds to the chain.
 #+BEGIN_SRC sh :tangle allo/allo.sh
 #!/bin/bash
 
 n=$(( $2 + 1 ))
 
-# copy the contents of cmdstan into the temp directory created on execute node 
-# (because I can't modify files outside this dir)
-# the "/." at end of cmdstan directory copies the contents of the directory.
 cp -r /cmdstan-2.18.1/. .
-# for when I run locally
-# cp -r ~/git/cmdstan/. .
 
 # compile the stan model, got to drop the .stan
 make allo$1
@@ -720,6 +733,7 @@ make allo$1
 
 #+RESULTS:
 
+make executable
 #+BEGIN_SRC sh :session *a*
 chmod +x allo/allo.sh
 #+END_SRC
@@ -728,13 +742,15 @@ chmod +x allo/allo.sh
 
 ** submit file
 
-#+BEGIN_SRC txt :tangle allo/allo_args.txt
+allo-args.txt
+#+BEGIN_SRC txt :tangle allo/allo-args.txt 
 
 1
 2
 
 #+END_SRC
 
+Queue 4 chains for each model taken from the list in allo-args.txt
 #+BEGIN_SRC sh :tangle allo/allo.sub
 universe = docker
 docker_image = tedwarderker/cmdstan-docker:1.0
@@ -752,12 +768,11 @@ request_cpus = 1
 request_memory = 2GB
 request_disk = 5GB
 
-queue 4 model from allo_args.txt
+queue 4 model from allo-args.txt
 
 #+END_SRC
 
 ** send to submit server
-
 
 #+BEGIN_SRC sh :session *a* :results verbatim
 
@@ -772,17 +787,6 @@ queue 4 model from allo_args.txt
 : sent 281 bytes  received 20 bytes  66.89 bytes/sec
 : total size is 5938880  speedup is 19730.50
 
-
-** Check if I need to increase the memory and disk requirements.
-
-These are two 
-
-how long they take to run?
-
-only 5MB of memory used
-
-The more complicated job took about 25 minutes to run.
-
 ** pull samples back 
 
 #+BEGIN_SRC sh :session *a* :results verbatim
@@ -791,11 +795,11 @@ The more complicated job took about 25 minutes to run.
 
 #+END_SRC
 
-** while running jobs, create the brmsfit objects locally.
+** COMMENT while running jobs, create the brmsfit objects locally.
 this takes a while, so it should be done once the jobs have been submitted.
-** read into R
+** Read samples into R
 
-#+begin_src R
+#+begin_src R :exports both
 
     m1$fit <- list.files("allo/", pattern = "samples-1-*", full.names = T) %>% 
         read_stan_csv()
@@ -834,7 +838,7 @@ is a crude measure of effective sample size, and Rhat is the potential
 scale reduction factor on split chains (at convergence, Rhat = 1).
 #+end_example
 
-#+begin_src R
+#+begin_src R :exports both
     m2$fit <- list.files("allo/", pattern = "samples-2-*", full.names = T) %>% 
         read_stan_csv()
     m2 <- brms:::rename_pars(m2)
@@ -880,7 +884,7 @@ is a crude measure of effective sample size, and Rhat is the potential
 scale reduction factor on split chains (at convergence, Rhat = 1).
 #+end_example
 
-
+** Compare the two models
 #+begin_src R
     library(loo)
 
@@ -899,7 +903,7 @@ comparison
 : elpd_diff        se 
 :     748.6      40.5
 
-The second model is better.
+It looks like the second model with parameters varying by City is better.
 
 ** COMMENT shiny stan is useful....
 
