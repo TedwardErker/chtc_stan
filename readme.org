@@ -2,4 +2,5 @@ This repository contains the assignment for the [[https://opensciencegrid.org/][
 [[https://opensciencegrid.org/user-school-2019/#][User School 2019]].  I set up [[https://mc-stan.org/][Stan]] to run on the University of
 Wisconsin-Madison's [[http://chtc.cs.wisc.edu/][Center for High throughput computing]].
 
-The assignment is in stan_chtc.org.
+The assignment is in stan_chtc.org.  Download and open stan_chtc.html
+in a browser for the best viewing experience.
